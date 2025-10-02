@@ -11,10 +11,17 @@
     import { Link, navigate } from 'svelte-navigator';
     import SubnetOptions from './SubnetOptions.svelte';
     import QrCode from 'svelte-qrcode';
+    import WifiLowIcon from "./../assets/wifi-low-light.svg";
+    import WifiMediumIcon from "./../assets/wifi-medium-light.svg";
+    import WifiHighIcon from "./../assets/wifi-high-light.svg";
+    import WifiOffIcon from "./../assets/wifi-off-light.svg";
 
     export let basepath = "/";
     export let sysinfo = {};
     export let data;
+
+    let wifiIcon = WifiOffIcon;
+    let wifiTitle = "Wi-Fi offline";
   
     let translations = {};
     translationsStore.subscribe(update => {
@@ -248,6 +255,26 @@
     _global.bindToCloud = function() {
         console.log("BIND CALLED");
     }
+
+    $: {
+    const rssi = data?.r;
+
+    if (typeof rssi === "number") {
+      if (rssi >= -50) {
+        wifiIcon = WifiHighIcon;
+        wifiTitle = `Wi-Fi strong (${rssi} dBm)`;
+      } else if (rssi >= -60) {
+        wifiIcon = WifiMediumIcon;
+        wifiTitle = `Wi-Fi medium (${rssi} dBm)`;
+      } else if (rssi >= -75) {
+        wifiIcon = WifiLowIcon;
+        wifiTitle = `Wi-Fi weak (${rssi} dBm)`;
+      } else {
+        wifiIcon = WifiOffIcon;
+        wifiTitle = `Wi-Fi very weak/offline (${rssi} dBm)`;
+      }
+    }
+  }
 </script>
 
 <form on:submit|preventDefault={handleSubmit} autocomplete="off">
@@ -475,103 +502,52 @@
             <div class="my-1">
                 <select name="nc" class="in-s" bind:value={configuration.n.c}>
                     <option value={1}>{translations.conf?.connection?.wifi ?? "WiFi"}</option>
-                    <option value={2}>{translations.conf?.connection?.ap ?? "AP"}</option>
                     {#if sysinfo.if && sysinfo.if.eth}
                     <option value={3}>{translations.conf?.connection?.eth ?? "Ethernet"}</option>
                     {/if}
                 </select>
             </div>
+
+            <!-- TODO: ADD WIFI SYMBOL -->
+
             {#if configuration.n.c == 1 || configuration.n.c == 2}
                 <div class="my-1">
-                    {translations.conf?.connection?.ssid ?? "SSID"}
-                    <label class="float-right mr-3"><input type="checkbox" value="true" bind:checked={manual} class="rounded mb-1"/> manual</label>
+                    {translations.conf?.connection?.ssid ?? "Nettverksnavn (SSID)"}
                     <br/>
-                    {#if manual}
-                        <input name="ws" bind:value={configuration.w.s} type="text" class="in-s" pattern={asciiPatternExt} required={configuration.n.c == 1 || configuration.n.c == 2}/>
-                    {:else}
-                        <select name="ws" bind:value={configuration.w.s} class="in-s" required={configuration.n.c == 1 || configuration.n.c == 2}>
-                            {#if networks?.c == -1}
-                                <option value="" selected disabled>Scanning...</option>
-                            {/if}
-                            {#if networks?.n}
-                                {#each networks?.n as network}
-                                    <option value={network.s}>{network.s} ({network.e}, RSSI: {network.r})</option>
-                                {/each}
-                            {/if}
-                        </select>
+                    {#if networks?.c == -1}
+                        <div class="text-sm italic">Søker etter Nettverk...</div>
+                    {/if}
+                    {#if networks?.n?.length}
+                        <ul class="border rounded divide-y">
+                            {#each networks.n as network, index}
+                                <li>
+                                    <label class="flex items-center px-2 py-1 cursor-pointer hover:bg-gray-100">
+                                        <input
+                                            type="radio"
+                                            class="mr-2"
+                                            name="ws-option"
+                                            value={network.s}
+                                            bind:group={configuration.w.s}/>
+                                        <span class="flex items-center justify-between w-full">
+                                            <span>{network.s}</span>
+                                            <img class="h-7 w-7" src={wifiIcon} alt={network.r}/>
+                                        </span>
+                                    </label>
+                                </li>
+                            {/each}
+                        </ul>
+                    {:else if networks?.c != -1}
+                        <div class="text-sm italic">Ingen nettverk funnet</div>
                     {/if}
                 </div>
                 <div class="my-1">
-                    {translations.conf?.connection?.psk ?? "Password"}<br/>
+                    {translations.conf?.connection?.psk ?? "Passord"}<br/>
                     <input name="wp" bind:value={configuration.w.p} type="password" class="in-s" pattern={asciiPatternExt}/>
-                </div>
-                <div class="my-1 flex">
-                    <div class="w-1/2">
-                        {translations.conf?.connection?.ps?.title ?? "Power saving"}<br/>
-                        <select name="wz" bind:value={configuration.w.z} class="in-s">
-                            <option value={255}>{translations.conf?.connection?.ps?.default ?? "Default"}</option>
-                            <option value={0}>{translations.conf?.connection?.ps?.off ?? "Off"}</option>
-                            <option value={1}>{translations.conf?.connection?.ps?.min ?? "Min"}</option>
-                            <option value={2}>{translations.conf?.connection?.ps?.max ?? "Max"}</option>
-                        </select>
-                    </div>
-                    <div class="ml-2 w-1/2">
-                        {translations.conf?.connection?.pwr ?? "Power"}<br/>
-                        <div class="flex">
-                            <input name="ww" bind:value={configuration.w.w} type="number" min="0" max="20.5" step="0.5" class="in-f tr w-full"/>
-                            <span class="in-post">dBm</span>
-                        </div>
-                    </div>
                 </div>
                 <div class="my-3">
                     <label><input type="checkbox" name="wb" value="true" bind:checked={configuration.w.b} class="rounded mb-1"/> {translations.conf?.connection?.tick_11b ?? "802.11b"}</label>
                 </div>
             {/if}
-        </div>
-        {/if}
-        {#if configuration?.n}
-        <div class="cnt">
-            <strong class="text-sm">{translations.conf?.network?.title ?? "Network"}</strong>
-            <a href="{wiki('Network-configuration')}" target="_blank" class="float-right">&#9432;</a>
-            <div class="my-1">
-                {translations.conf?.network?.ip ?? "IP"}<br/>
-                <div class="flex">
-                    <select name="nm" bind:value={configuration.n.m} class="in-f">
-                        <option value="dhcp">{translations.conf?.network?.dhcp ?? "DHCP"}</option>
-                        <option value="static">{translations.conf?.network?.static ?? "Static"}</option>
-                    </select>
-                    <input name="ni" bind:value={configuration.n.i} type="text" class="in-m w-full" disabled={configuration.n.m == 'dhcp'} required={configuration.n.m == 'static'} pattern={ipPattern}/>
-                    <select name="ns" bind:value={configuration.n.s} class="in-l" disabled={configuration.n.m == 'dhcp'} required={configuration.n.m == 'static'}>
-                        <SubnetOptions/>
-                    </select>
-                </div>
-            </div>
-            {#if configuration.n.m == 'static'}
-            <div class="my-1">
-                {translations.conf?.network?.gw ?? "Gateway"}<br/>
-                <input name="ng" bind:value={configuration.n.g} type="text" class="in-s" pattern={ipPattern}/>
-            </div>
-            <div class="my-1">
-                {translations.conf?.network?.dns ?? "DNS"}<br/>
-                <div class="flex">
-                    <input name="nd1" bind:value={configuration.n.d1} type="text" class="in-f w-full" pattern={ipPattern}/>
-                    <input name="nd2" bind:value={configuration.n.d2} type="text" class="in-l w-full" pattern={ipPattern}/>
-                </div>
-            </div>
-            {/if}
-            <div class="my-1">
-                <label><input name="nx" value="true" bind:checked={configuration.n.x} type="checkbox" class="rounded mb-1"/> IPv6</label>
-            </div>
-            <div class="my-1">
-                <label><input name="nd" value="true" bind:checked={configuration.n.d} type="checkbox" class="rounded mb-1"/> {translations.conf?.network?.tick_mdns ?? "mDNS"}</label>
-            </div>
-            <input type="hidden" name="ntp" value="true"/>
-            <div class="my-1">
-                {translations.conf?.network?.ntp ?? "NTP"} <label class="ml-4"><input name="ntpd" value="true" bind:checked={configuration.n.h} type="checkbox" class="rounded mb-1"/> {translations.conf?.network?.tick_ntp_dhcp ?? "from DHCP"}</label><br/>
-                <div class="flex">
-                    <input name="ntph" bind:value={configuration.n.n1} type="text" class="in-s" pattern={asciiPattern}/>
-                </div>
-            </div>
         </div>
         {/if}
         {#if configuration?.q}
